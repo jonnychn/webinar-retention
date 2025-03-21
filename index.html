@@ -27,6 +27,7 @@
             width: 100%;
             height: 120px;
             margin-bottom: 10px;
+            font-family: monospace;
         }
         #process-button {
             padding: 10px 20px;
@@ -67,7 +68,7 @@
             flex: 2;
             min-width: 300px;
             position: relative;
-            background-color: #fff; /* Added background color for the canvas container */
+            background-color: #fff; 
             padding: 10px;
         }
         #summary-table {
@@ -106,11 +107,10 @@
     <div id="instructions">
         <p>
             <strong>How to Use:</strong><br>
-            1. Copy your CSV data (which must include at least <em>“Person”</em> and <em>“Time Duration”</em> headers) directly into the text box below.<br>
-            2. Click <em>“Process CSV Data”</em>.<br>
-            3. The tool will calculate minute-by-minute retention (what percentage of people remain past each minute).<br>
-            4. A table will display detailed results, and a chart will show retention over time.<br>
-            5. You can download the processed CSV and the chart image using the provided download buttons.
+            1. Copy your data directly from your spreadsheet (Google Sheets, Excel, etc.), including the header row <em>(Person, Time Duration)</em>.<br>
+            2. Paste into the box below. (Tab or comma-delimited both work.)<br>
+            3. Click <em>“Process CSV Data”</em> to generate the retention table and chart.<br>
+            4. Use the download buttons to save the processed CSV and the chart image.
         </p>
         <p>
             <em>Example CSV Data:</em><br>
@@ -123,7 +123,7 @@
     </div>
 
     <div id="paste-section">
-        <textarea id="csv-textarea" placeholder="Paste your CSV data here..."></textarea>
+        <textarea id="csv-textarea" placeholder="Paste your CSV or tab-delimited data here..."></textarea>
         <br>
         <button id="process-button">Process CSV Data</button>
         <a id="download-button">Download Retention Data CSV</a>
@@ -185,52 +185,66 @@
             downloadButton.style.display = 'none';
             downloadChartButton.style.display = 'none';
 
+            // Get text from the textarea
             const text = csvTextarea.value.trim();
             if (!text) {
-                messageDiv.textContent = 'Please paste your CSV data in the text box.';
+                messageDiv.textContent = 'Please paste your data in the text box.';
                 return;
             }
 
-            const lines = text.split('\n');
-
+            // Split into lines by newline
+            const lines = text.split(/\r?\n/);
             if (lines.length < 2) {
-                messageDiv.textContent = 'CSV data must contain at least two rows (headers and data).';
+                messageDiv.textContent = 'Data must contain at least two rows (headers and data).';
                 return;
             }
 
-            const headers = lines[0].split(',').map(h => h.trim());
+            // Detect whether the first line uses a tab or a comma
+            let delimiter;
+            if (lines[0].includes('\t')) {
+                delimiter = '\t';
+            } else if (lines[0].includes(',')) {
+                delimiter = ',';
+            } else {
+                messageDiv.textContent = 'Unable to detect tab or comma delimiter in the header row.';
+                return;
+            }
+
+            // Parse the header row
+            const headers = lines[0].split(delimiter).map(h => h.trim());
             if (!headers.includes('Person') || !headers.includes('Time Duration')) {
-                messageDiv.textContent = 'CSV must contain "Person" and "Time Duration" columns.';
+                messageDiv.textContent = 'Data must contain "Person" and "Time Duration" columns.';
                 return;
             }
 
             const personIndex = headers.indexOf('Person');
             const timeIndex = headers.indexOf('Time Duration');
 
+            // Gather the data
             const data = [];
-
             for (let i = 1; i < lines.length; i++) {
-                const row = lines[i].split(',').map(item => item.trim());
-                const person = row[personIndex];
-                const timeDuration = parseFloat(row[timeIndex]);
+                // Split each line using the detected delimiter
+                const row = lines[i].split(delimiter).map(item => item.trim());
 
-                // Skip if "Time Duration" isn't a number
-                if (isNaN(timeDuration)) {
+                // Sometimes an empty line or partial line might occur
+                if (row.length < Math.max(personIndex, timeIndex) + 1) {
                     continue;
                 }
 
-                data.push({
-                    person: person,
-                    timeDuration: timeDuration
-                });
+                const person = row[personIndex];
+                const timeDuration = parseFloat(row[timeIndex]);
+
+                if (!isNaN(timeDuration)) {
+                    data.push({ person, timeDuration });
+                }
             }
 
             if (data.length === 0) {
-                messageDiv.textContent = 'No valid data found in the CSV.';
+                messageDiv.textContent = 'No valid data rows found.';
                 return;
             }
 
-            // Process retention data
+            // Calculate retention data
             const initialAttendees = data.length;
             const maxTime = Math.floor(Math.max(...data.map(d => d.timeDuration)));
             const retentionData = [];
@@ -241,12 +255,12 @@
 
                 retentionData.push({
                     timeSpent: minute,
-                    attendeesRemaining: attendeesRemaining,
+                    attendeesRemaining,
                     retentionPercent: retentionPercent.toFixed(2)
                 });
             }
 
-            // Display results in table
+            // Populate the detailed results table
             resultTableBody.innerHTML = '';
             retentionData.forEach(row => {
                 const tr = document.createElement('tr');
@@ -270,22 +284,20 @@
                 resultTableBody.appendChild(tr);
             });
 
-            // Show the result section
+            // Show the results
             resultSection.style.display = 'block';
             downloadButton.style.display = 'inline-block';
             downloadChartButton.style.display = 'inline-block';
 
-            // Prepare data for CSV download
+            // Prepare CSV for download
             const csvContent = 'Time Spent (Minutes),Number of Attendees Remaining,Retention (%)\n' +
                 retentionData.map(row => `${row.timeSpent},${row.attendeesRemaining},${row.retentionPercent}%`).join('\n');
-
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
-
             downloadButton.href = url;
             downloadButton.download = 'retention_data.csv';
 
-            // Generate the chart using Chart.js
+            // Draw chart
             const ctx = document.getElementById('retention-chart').getContext('2d');
 
             // Destroy any previous chart
@@ -337,13 +349,13 @@
                 }
             });
 
-            // Calculate retention percentages at specified intervals
+            // Summary intervals
             const summaryIntervals = [15, 30, 45, 60, maxTime];
             const summaryData = summaryIntervals.map(interval => {
-                const retentionAtInterval = retentionData.find(row => row.timeSpent === interval);
+                const row = retentionData.find(r => r.timeSpent === interval);
                 return {
                     interval: interval === maxTime ? `End (${interval} min)` : `${interval} min`,
-                    retentionPercent: retentionAtInterval ? retentionAtInterval.retentionPercent + '%' : '0%'
+                    retentionPercent: row ? row.retentionPercent + '%' : '0%'
                 };
             });
 
@@ -362,24 +374,23 @@
 
                 tr.appendChild(tdInterval);
                 tr.appendChild(tdRetention);
-
                 summaryTableBody.appendChild(tr);
             });
 
-            // Download Chart button
+            // Download chart button
             downloadChartButton.onclick = function() {
-                // Create a temporary canvas
                 const canvas = document.getElementById('retention-chart');
+                // Create a temp canvas to add a white background
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = canvas.width;
                 tempCanvas.height = canvas.height;
                 const tempCtx = tempCanvas.getContext('2d');
 
-                // Fill background with white
+                // White background
                 tempCtx.fillStyle = '#ffffff';
                 tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-                // Draw the chart onto the temp canvas
+                // Draw original chart
                 tempCtx.drawImage(canvas, 0, 0);
 
                 // Trigger download
