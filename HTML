@@ -59,7 +59,7 @@
             flex: 2;
             min-width: 300px;
             position: relative;
-            background-color: #fff; /* Added background color for the canvas container */
+            background-color: #fff;
         }
         #summary-table {
             flex: 1;
@@ -81,6 +81,19 @@
         th {
             background-color: #f2f2f2;
         }
+        /* Summary section */
+        #calculated-summary ul {
+            list-style: none;
+            padding: 0;
+        }
+        #calculated-summary li {
+            margin-bottom: 8px;
+        }
+        #calculated-summary .tooltip {
+            margin-left: 6px;
+            cursor: help;
+            color: #007bff;
+        }
         /* Responsive adjustments */
         @media (max-width: 800px) {
             #chart-and-summary {
@@ -88,7 +101,6 @@
             }
         }
     </style>
-    <!-- Include Chart.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -105,6 +117,16 @@
     <div id="result-section">
         <h2>Retention Data</h2>
 
+        <!-- New Summary Section -->
+        <div id="calculated-summary">
+            <h3>Summary</h3>
+            <ul>
+                <li>Average retention: <strong id="avg-retention"></strong><span class="tooltip" id="avg-tooltip" title="(Sum of all per-minute retention percentages) / number of minutes">&#9432;</span></li>
+                <li>Retention at halfway: <strong id="half-retention"></strong><span class="tooltip" id="half-tooltip" title="(Attendees remaining at half duration / initial attendees) × 100">&#9432;</span></li>
+                <li>Retention at end: <strong id="full-retention"></strong><span class="tooltip" id="full-tooltip" title="(Attendees remaining at end / initial attendees) × 100">&#9432;</span></li>
+            </ul>
+        </div>
+
         <div id="chart-and-summary">
             <div id="chart-container">
                 <canvas id="retention-chart"></canvas>
@@ -118,9 +140,7 @@
                             <th>Retention (%)</th>
                         </tr>
                     </thead>
-                    <tbody id="summary-table-body">
-                        <!-- Summary data will be inserted here -->
-                    </tbody>
+                    <tbody id="summary-table-body"></tbody>
                 </table>
             </div>
         </div>
@@ -133,9 +153,7 @@
                     <th>Retention (%)</th>
                 </tr>
             </thead>
-            <tbody>
-                <!-- Detailed data will be inserted here -->
-            </tbody>
+            <tbody></tbody>
         </table>
     </div>
 
@@ -162,18 +180,15 @@
             }
 
             const file = fileInput.files[0];
-
             if (!file.name.toLowerCase().endsWith('.csv')) {
                 messageDiv.textContent = 'Please upload a valid CSV file.';
                 return;
             }
 
             const reader = new FileReader();
-
             reader.onload = function(e) {
                 const text = e.target.result;
                 const lines = text.trim().split('\n');
-
                 if (lines.length < 2) {
                     messageDiv.textContent = 'CSV file must contain at least two rows (headers and data).';
                     return;
@@ -187,22 +202,14 @@
 
                 const personIndex = headers.indexOf('Person');
                 const timeIndex = headers.indexOf('Time Duration');
-
                 const data = [];
 
                 for (let i = 1; i < lines.length; i++) {
                     const row = lines[i].split(',').map(item => item.trim());
                     const person = row[personIndex];
                     const timeDuration = parseFloat(row[timeIndex]);
-
-                    if (isNaN(timeDuration)) {
-                        continue; // Skip invalid time durations
-                    }
-
-                    data.push({
-                        person: person,
-                        timeDuration: timeDuration
-                    });
+                    if (isNaN(timeDuration)) continue;
+                    data.push({ person, timeDuration });
                 }
 
                 if (data.length === 0) {
@@ -210,171 +217,114 @@
                     return;
                 }
 
-                // Process retention data
                 const initialAttendees = data.length;
                 const maxTime = Math.floor(Math.max(...data.map(d => d.timeDuration)));
-
                 const retentionData = [];
 
                 for (let minute = 1; minute <= maxTime; minute++) {
                     const attendeesRemaining = data.filter(d => d.timeDuration >= minute).length;
                     const retentionPercent = (attendeesRemaining / initialAttendees) * 100;
-
-                    retentionData.push({
-                        timeSpent: minute,
-                        attendeesRemaining: attendeesRemaining,
-                        retentionPercent: retentionPercent.toFixed(2)
-                    });
+                    retentionData.push({ timeSpent: minute, attendeesRemaining, retentionPercent: retentionPercent.toFixed(2) });
                 }
 
-                // Display the detailed results in the table
+                // Populate detailed table
                 resultTableBody.innerHTML = '';
                 retentionData.forEach(row => {
                     const tr = document.createElement('tr');
-
-                    const tdTime = document.createElement('td');
-                    tdTime.textContent = row.timeSpent;
-                    tdTime.style.textAlign = 'right';
-
-                    const tdAttendees = document.createElement('td');
-                    tdAttendees.textContent = row.attendeesRemaining;
-                    tdAttendees.style.textAlign = 'right';
-
-                    const tdRetention = document.createElement('td');
-                    tdRetention.textContent = row.retentionPercent + '%';
-                    tdRetention.style.textAlign = 'right';
-
-                    tr.appendChild(tdTime);
-                    tr.appendChild(tdAttendees);
-                    tr.appendChild(tdRetention);
-
+                    ['timeSpent', 'attendeesRemaining'].forEach(key => {
+                        const td = document.createElement('td');
+                        td.textContent = row[key];
+                        td.style.textAlign = 'right';
+                        tr.appendChild(td);
+                    });
+                    const tdPerc = document.createElement('td');
+                    tdPerc.textContent = row.retentionPercent + '%';
+                    tdPerc.style.textAlign = 'right';
+                    tr.appendChild(tdPerc);
                     resultTableBody.appendChild(tr);
                 });
-
                 resultSection.style.display = 'block';
                 downloadButton.style.display = 'inline-block';
                 downloadChartButton.style.display = 'inline-block';
 
-                // Prepare data for CSV download
+                // CSV download setup
                 const csvContent = 'Time Spent (Minutes),Number of Attendees Remaining,Retention (%)\n' +
-                    retentionData.map(row => `${row.timeSpent},${row.attendeesRemaining},${row.retentionPercent}%`).join('\n');
-
+                    retentionData.map(r => `${r.timeSpent},${r.attendeesRemaining},${r.retentionPercent}%`).join('\n');
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
-
                 downloadButton.href = url;
                 downloadButton.download = 'retention_data.csv';
 
-                // Generate the chart using Chart.js
+                // Chart.js rendering
                 const ctx = document.getElementById('retention-chart').getContext('2d');
-
-                // Destroy previous chart instance if it exists
-                if (chartInstance) {
-                    chartInstance.destroy();
-                }
-
+                if (chartInstance) chartInstance.destroy();
                 chartInstance = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: retentionData.map(row => row.timeSpent),
+                        labels: retentionData.map(r => r.timeSpent),
                         datasets: [{
                             label: 'Retention (%)',
-                            data: retentionData.map(row => row.retentionPercent),
+                            data: retentionData.map(r => r.retentionPercent),
                             borderColor: 'rgba(75, 192, 192, 1)',
                             backgroundColor: 'rgba(75, 192, 192, 0.2)',
                             fill: true,
                             pointRadius: 2,
-                            lineTension: 0.1
+                            tension: 0.1
                         }]
                     },
                     options: {
                         responsive: true,
                         scales: {
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Time Spent (Minutes)'
-                                }
-                            },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Retention (%)'
-                                },
-                                beginAtZero: true,
-                                max: 100
-                            }
+                            x: { title: { display: true, text: 'Time Spent (Minutes)' } },
+                            y: { title: { display: true, text: 'Retention (%)' }, beginAtZero: true, max: 100 }
                         },
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return `Retention: ${context.parsed.y}%`;
-                                    }
-                                }
-                            }
-                        }
+                        plugins: { tooltip: { callbacks: { label: ctx => `Retention: ${ctx.parsed.y}%` } } }
                     }
                 });
 
-                // Calculate retention percentages at specified intervals
-                const summaryIntervals = [15, 30, 45, 60, maxTime];
-                const summaryData = summaryIntervals.map(interval => {
-                    const retentionAtInterval = retentionData.find(row => row.timeSpent === interval);
-                    return {
-                        interval: interval === maxTime ? `End (${interval} min)` : `${interval} min`,
-                        retentionPercent: retentionAtInterval ? retentionAtInterval.retentionPercent + '%' : '0%'
-                    };
-                });
-
-                // Display the summary data in the table
+                // Standard summary table
+                const intervals = [15,30,45,60,maxTime];
                 summaryTableBody.innerHTML = '';
-                summaryData.forEach(row => {
+                intervals.map(i => {
+                    const rec = retentionData.find(r => r.timeSpent === i);
+                    return { label: i===maxTime ? `End (${i} min)` : `${i} min`, value: rec ? rec.retentionPercent + '%' : '0%' };
+                }).forEach(item => {
                     const tr = document.createElement('tr');
-
-                    const tdInterval = document.createElement('td');
-                    tdInterval.textContent = row.interval;
-                    tdInterval.style.textAlign = 'right';
-
-                    const tdRetention = document.createElement('td');
-                    tdRetention.textContent = row.retentionPercent;
-                    tdRetention.style.textAlign = 'right';
-
-                    tr.appendChild(tdInterval);
-                    tr.appendChild(tdRetention);
-
+                    ['label','value'].forEach((key, idx) => {
+                        const td = document.createElement('td');
+                        td.textContent = item[key];
+                        td.style.textAlign = 'right';
+                        tr.appendChild(td);
+                    });
                     summaryTableBody.appendChild(tr);
                 });
 
-                // Add event listener to the "Download Chart Image" button
+                // Calculated summary metrics
+                const avg = (retentionData.reduce((sum,r) => sum + parseFloat(r.retentionPercent),0) / retentionData.length).toFixed(2);
+                const halfMin = Math.floor(maxTime/2);
+                const halfObj = retentionData.find(r => r.timeSpent === halfMin) || { attendeesRemaining: 0, retentionPercent: '0.00' };
+                const fullObj = retentionData[retentionData.length-1];
+
+                document.getElementById('avg-retention').textContent = avg + '%';
+                document.getElementById('half-retention').textContent = `${halfObj.retentionPercent}% (${halfMin} min)`;
+                document.getElementById('full-retention').textContent = `${fullObj.retentionPercent}% (${maxTime} min)`;
+
                 downloadChartButton.onclick = function() {
-                    // Create a temporary canvas
                     const canvas = document.getElementById('retention-chart');
-                    const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = canvas.width;
-                    tempCanvas.height = canvas.height;
-                    const tempCtx = tempCanvas.getContext('2d');
-
-                    // Fill the background with white
-                    tempCtx.fillStyle = '#ffffff';
-                    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-                    // Draw the chart onto the temporary canvas
-                    tempCtx.drawImage(canvas, 0, 0);
-
-                    // Trigger download
+                    const temp = document.createElement('canvas');
+                    temp.width = canvas.width;
+                    temp.height = canvas.height;
+                    const tctx = temp.getContext('2d');
+                    tctx.fillStyle = '#ffffff';
+                    tctx.fillRect(0,0,temp.width,temp.height);
+                    tctx.drawImage(canvas,0,0);
                     const link = document.createElement('a');
                     link.download = 'retention_chart.png';
-                    link.href = tempCanvas.toDataURL('image/png');
+                    link.href = temp.toDataURL('image/png');
                     link.click();
                 };
-
             };
-
-            reader.onerror = function() {
-                messageDiv.textContent = 'An error occurred while reading the file.';
-            };
-
+            reader.onerror = () => messageDiv.textContent = 'Error reading file.';
             reader.readAsText(file);
         });
     </script>
