@@ -8,6 +8,9 @@
         h1 { color: #333; }
         #upload-section { background-color: #fff; padding: 20px; border: 1px solid #ccc; }
         #instructions { background: #eef; padding: 10px; margin-bottom: 15px; border-left: 4px solid #007bff; }
+        #tool-info { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        #tool-info th, #tool-info td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #tool-info th { background-color: #f2f2f2; }
         #file-input, #csv-textarea { width: 100%; box-sizing: border-box; }
         #csv-textarea { margin-top: 10px; height: 150px; font-family: monospace; }
         #process-button, #download-button, #download-chart-button { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
@@ -37,6 +40,22 @@
                 <li>Or paste durations (one number per line) into the textarea below.</li>
             </ul>
         </div>
+        <table id="tool-info">
+            <thead>
+                <tr>
+                    <th>Goal</th>
+                    <th>Use Case</th>
+                    <th>Expected Outcome</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Compute retention metrics</td>
+                    <td>Analyze attendee drop-off over time (e.g., webinar)</td>
+                    <td>Provide summary stats and visual chart of audience engagement</td>
+                </tr>
+            </tbody>
+        </table>
         <input type="file" id="file-input" accept=".csv">
         <textarea id="csv-textarea" placeholder="Paste durations here (one number per line)"></textarea>
         <br>
@@ -214,15 +233,11 @@
             const file = fileInput.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = e => {
-                    const durations = parseDurations(e.target.result);
-                    run(durations);
-                };
+                reader.onload = e => run(parseDurations(e.target.result));
                 reader.onerror = () => messageDiv.textContent = 'Error reading file.';
                 reader.readAsText(file);
             } else {
-                const durations = parseDurations(textarea.value);
-                run(durations);
+                run(parseDurations(textarea.value));
             }
         });
     </script>
