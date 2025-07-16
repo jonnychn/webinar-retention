@@ -8,6 +8,7 @@
         h1 { color: #333; }
         #upload-section { background-color: #fff; padding: 20px; border: 1px solid #ccc; }
         #instructions { background: #eef; padding: 10px; margin-bottom: 15px; border-left: 4px solid #007bff; }
+        #privacy-notice { background: #e6f4ea; padding: 10px; margin-bottom: 15px; border-left: 4px solid #28a745; color: #155724; }
         #tool-info { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
         #tool-info th, #tool-info td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         #tool-info th { background-color: #f2f2f2; }
@@ -39,6 +40,9 @@
                 <li>Upload a CSV file with header <code>Time Duration</code> and one column of durations.</li>
                 <li>Or paste durations (one number per line) into the textarea below.</li>
             </ul>
+        </div>
+        <div id="privacy-notice">
+            <strong>Privacy Notice:</strong> All data processing happens locally in your browser. No data is sent to any server—your information stays on your computer.
         </div>
         <table id="tool-info">
             <thead>
@@ -151,7 +155,6 @@
                     retention.push({ minute: t, remaining: rem, pct: (rem / initial * 100).toFixed(2) });
                 }
 
-                // Detailed table
                 resultTableBody.innerHTML = '';
                 retention.forEach(r => {
                     const tr = document.createElement('tr');
@@ -161,19 +164,16 @@
                     resultTableBody.appendChild(tr);
                 });
 
-                // Show results
                 resultSection.style.display = 'block';
                 downloadButton.style.display = 'inline-block';
                 downloadChartButton.style.display = 'inline-block';
 
-                // CSV download
                 const csv = 'Time Spent (Minutes),Number Remaining,Retention (%)\n' + retention.map(r =>
                     `${r.minute},${r.remaining},${r.pct}%`).join('\n');
                 const blob = new Blob([csv], { type: 'text/csv' });
                 downloadButton.href = URL.createObjectURL(blob);
                 downloadButton.download = 'retention_data.csv';
 
-                // Chart
                 const ctx = document.getElementById('retention-chart').getContext('2d');
                 if (chartInstance) chartInstance.destroy();
                 chartInstance = new Chart(ctx, {
@@ -191,7 +191,6 @@
                     }
                 });
 
-                // Interval summary
                 const intervals = [15, 30, 45, 60, maxTime];
                 summaryTableBody.innerHTML = '';
                 intervals.map(i => {
@@ -205,7 +204,6 @@
                     summaryTableBody.appendChild(tr);
                 });
 
-                // Calculated summary
                 const avgRetention = (totalWatch / (initial * maxTime) * 100).toFixed(2) + '%';
                 const avgWatch = (totalWatch / initial).toFixed(2) + ' min';
                 const halfMinute = Math.floor(maxTime / 2);
@@ -229,7 +227,6 @@
                 };
             }
 
-            // Try CSV upload first
             const file = fileInput.files[0];
             if (file) {
                 const reader = new FileReader();
