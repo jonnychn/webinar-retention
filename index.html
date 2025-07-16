@@ -28,12 +28,12 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <h1>Retention Data Generator with Chart Visualization</h1>
+    <h1>Retention Data Generator with Chart.js Visualization</h1>
     <div id="upload-section">
         <div id="instructions">
             <strong>Instructions:</strong>
             <ul>
-                <li>Upload a CSV file with a header <code>Time Duration</code> and one column of durations.</li>
+                <li>Upload a CSV file with header <code>Time Duration</code> and one column of durations.</li>
                 <li>Or paste durations (one number per line) into the textarea below.</li>
             </ul>
         </div>
@@ -52,13 +52,16 @@
             <h3>Summary</h3>
             <ul>
                 <li>Average retention: <strong id="avg-retention"></strong>
-                    <code>(Sum of all per-minute retention percentages) / number of minutes</code>
+                    <code>(Total minutes watched) / (Initial attendees × Webinar length) × 100</code>
+                </li>
+                <li>Average watch time: <strong id="avg-watch-time"></strong>
+                    <code>(Total minutes watched) / (Number of participants)</code>
                 </li>
                 <li>Retention at halfway: <strong id="half-retention"></strong>
-                    <code>(Attendees remaining at half duration / initial attendees) × 100</code>
+                    <code>(Attendees remaining at half duration / Initial attendees) × 100</code>
                 </li>
                 <li>Retention at end: <strong id="full-retention"></strong>
-                    <code>(Attendees remaining at end / initial attendees) × 100</code>
+                    <code>(Attendees remaining at end / Initial attendees) × 100</code>
                 </li>
             </ul>
         </div>
@@ -81,29 +84,19 @@
     </div>
 
     <script>
-        function processText(text) {
+        function parseDurations(text) {
             const lines = text.trim().split('\n');
-            const messageDiv = document.getElementById('message');
-            messageDiv.textContent = '';
-            if (!lines.length) {
-                messageDiv.textContent = 'No data provided.';
-                return null;
-            }
+            const header = lines[0].split(',').map(h=>h.trim().toLowerCase());
             let durations = [];
-            // CSV mode: header contains Time Duration
-            const firstCols = lines[0].split(',').map(h=>h.trim().toLowerCase());
-            if (firstCols.includes('time duration')) {
-                const idx = firstCols.indexOf('time duration');
+            if (header.includes('time duration')) {
+                const idx = header.indexOf('time duration');
                 lines.slice(1).forEach(line => {
-                    const parts = line.split(',');
-                    const val = parseFloat(parts[idx]);
+                    const val = parseFloat(line.split(',')[idx]);
                     if (!isNaN(val)) durations.push(val);
                 });
             } else if (lines.every(l => !isNaN(parseFloat(l.trim())))) {
-                // plain list of numbers
                 durations = lines.map(l => parseFloat(l.trim()));
             } else {
-                messageDiv.textContent = 'Data must be CSV with a header "Time Duration" or a list of numbers.';
                 return null;
             }
             return durations;
@@ -112,76 +105,124 @@
         document.getElementById('process-button').addEventListener('click', () => {
             const fileInput = document.getElementById('file-input');
             const textarea = document.getElementById('csv-textarea');
-            const resultSection = document.getElementById('result-section');
             const messageDiv = document.getElementById('message');
+            const resultSection = document.getElementById('result-section');
             const downloadButton = document.getElementById('download-button');
             const downloadChartButton = document.getElementById('download-chart-button');
             const resultTableBody = document.querySelector('#result-table tbody');
             const summaryTableBody = document.getElementById('summary-table-body');
             let chartInstance;
+
+            messageDiv.textContent = '';
             resultSection.style.display = 'none';
             downloadButton.style.display = 'none';
             downloadChartButton.style.display = 'none';
 
-            const file = fileInput.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = e => runWithDurations(processText(e.target.result));
-                reader.onerror = () => messageDiv.textContent = 'Error reading file.';
-                reader.readAsText(file);
-            } else {
-                runWithDurations(processText(textarea.value));
-            }
-
-            function runWithDurations(durations) {
-                if (!durations) return;
+            function run(durations) {
+                if (!durations || !durations.length) {
+                    messageDiv.textContent = 'Invalid data. Ensure CSV has "Time Duration" header or paste numbers.';
+                    return;
+                }
                 const initial = durations.length;
+                const totalWatch = durations.reduce((sum, d) => sum + d, 0);
                 const maxTime = Math.floor(Math.max(...durations));
                 const retention = [];
-                for (let m=1; m<=maxTime; m++) {
-                    const rem = durations.filter(d=>d>=m).length;
-                    retention.push({m,rem,pct:(rem/initial*100).toFixed(2)});
+                for (let t = 1; t <= maxTime; t++) {
+                    const rem = durations.filter(d => d >= t).length;
+                    retention.push({ minute: t, remaining: rem, pct: (rem / initial * 100).toFixed(2) });
                 }
+
                 // Detailed table
                 resultTableBody.innerHTML = '';
                 retention.forEach(r => {
                     const tr = document.createElement('tr');
-                    [r.m, r.rem, r.pct+'%'].forEach(v => {
-                        const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+                    [r.minute, r.remaining, r.pct + '%'].forEach(val => {
+                        const td = document.createElement('td'); td.textContent = val; tr.appendChild(td);
                     });
                     resultTableBody.appendChild(tr);
                 });
-                // Summary chart/table
+
+                // Show results
                 resultSection.style.display = 'block';
                 downloadButton.style.display = 'inline-block';
                 downloadChartButton.style.display = 'inline-block';
-                const csv = 'Time Spent (Minutes),Number Remaining,Retention (%)\n' + retention.map(r=>`${r.m},${r.rem},${r.pct}%`).join('\n');
-                const blob = new Blob([csv],{type:'text/csv'});
-                const url = URL.createObjectURL(blob);
-                downloadButton.href = url; downloadButton.download='retention_data.csv';
 
+                // CSV download
+                const csv = 'Time Spent (Minutes),Number Remaining,Retention (%)\n' + retention.map(r =>
+                    `${r.minute},${r.remaining},${r.pct}%`).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                downloadButton.href = URL.createObjectURL(blob);
+                downloadButton.download = 'retention_data.csv';
+
+                // Chart
                 const ctx = document.getElementById('retention-chart').getContext('2d');
                 if (chartInstance) chartInstance.destroy();
-                chartInstance = new Chart(ctx,{type:'line',data:{labels:retention.map(r=>r.m),datasets:[{label:'Retention (%)',data:retention.map(r=>r.pct),fill:true,tension:0.1}]},options:{responsive:true,scales:{x:{title:{display:true,text:'Time Spent (min)'}},y:{beginAtZero:true,max:100,title:{display:true,text:'Retention (%)'}}}}});
-                // Interval summary
-                const intervals=[15,30,45,60,maxTime]; summaryTableBody.innerHTML='';
-                intervals.map(i=>{const rec=retention.find(r=>r.m===i)||{pct:'0.00'};return{i:i, pct:rec.pct+'%'}}).forEach(it=>{
-                    const tr=document.createElement('tr'); [''+(it.i===maxTime?`End (${it.i} min)`:it.i+' min'), it.pct].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);}); summaryTableBody.appendChild(tr);
+                chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: retention.map(r => r.minute),
+                        datasets: [{ label: 'Retention (%)', data: retention.map(r => r.pct), fill: true, tension: 0.1 }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: { title: { display: true, text: 'Time Spent (min)' } },
+                            y: { beginAtZero: true, max: 100, title: { display: true, text: 'Retention (%)' } }
+                        }
+                    }
                 });
+
+                // Interval summary
+                const intervals = [15, 30, 45, 60, maxTime];
+                summaryTableBody.innerHTML = '';
+                intervals.map(i => {
+                    const rec = retention.find(r => r.minute === i) || { pct: '0.00' };
+                    return { label: i === maxTime ? `End (${i} min)` : `${i} min`, value: rec.pct + '%' };
+                }).forEach(item => {
+                    const tr = document.createElement('tr');
+                    [item.label, item.value].forEach(val => {
+                        const td = document.createElement('td'); td.textContent = val; tr.appendChild(td);
+                    });
+                    summaryTableBody.appendChild(tr);
+                });
+
                 // Calculated summary
-                const avg = (retention.reduce((s,r)=>s+parseFloat(r.pct),0)/retention.length).toFixed(2)+'%';
-                const half = Math.floor(maxTime/2);
-                const halfPct = (retention.find(r=>r.m===half)||{pct:'0.00'}).pct+'%';
-                const fullPct = retention[retention.length-1].pct+'%';
-                document.getElementById('avg-retention').textContent=avg;
-                document.getElementById('half-retention').textContent=halfPct+` (${half} min)`;
-                document.getElementById('full-retention').textContent=fullPct+` (${maxTime} min)`;
+                const avgRetention = (totalWatch / (initial * maxTime) * 100).toFixed(2) + '%';
+                const avgWatch = (totalWatch / initial).toFixed(2) + ' min';
+                const halfMinute = Math.floor(maxTime / 2);
+                const halfRec = (retention.find(r => r.minute === halfMinute) || { pct: '0.00' }).pct + '%';
+                const fullRec = retention[retention.length - 1].pct + '%';
+
+                document.getElementById('avg-retention').textContent = avgRetention;
+                document.getElementById('avg-watch-time').textContent = avgWatch;
+                document.getElementById('half-retention').textContent = halfRec + ` (${halfMinute} min)`;
+                document.getElementById('full-retention').textContent = fullRec + ` (${maxTime} min)`;
 
                 downloadChartButton.onclick = () => {
-                    const c=document.getElementById('retention-chart'), t=document.createElement('canvas');
-                    t.width=c.width; t.height=c.height; const tx=t.getContext('2d'); tx.fillStyle='#fff'; tx.fillRect(0,0,t.width,t.height); tx.drawImage(c,0,0);
-                    const a=document.createElement('a'); a.href=t.toDataURL('image/png'); a.download='retention_chart.png'; a.click();
+                    const c = document.getElementById('retention-chart');
+                    const temp = document.createElement('canvas');
+                    temp.width = c.width; temp.height = c.height;
+                    const tx = temp.getContext('2d');
+                    tx.fillStyle = '#fff'; tx.fillRect(0, 0, temp.width, temp.height);
+                    tx.drawImage(c, 0, 0);
+                    const a = document.createElement('a');
+                    a.href = temp.toDataURL('image/png'); a.download = 'retention_chart.png'; a.click();
                 };
+            }
+
+            // Try CSV upload first
+            const file = fileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const durations = parseDurations(e.target.result);
+                    run(durations);
+                };
+                reader.onerror = () => messageDiv.textContent = 'Error reading file.';
+                reader.readAsText(file);
+            } else {
+                const durations = parseDurations(textarea.value);
+                run(durations);
             }
         });
     </script>
